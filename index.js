@@ -19,7 +19,7 @@ const mqttPort = process.env.MQTT_PORT || 1883;
 // 🔧 FIX 2: Updated CORS with production domains
 const corsOrigins = [
   'https://coastal-grand-tolr.vercel.app',
-  'https://coastal-grand-back.onrender.com'
+  'https://hotel-backend-5kcn.onrender.com'
 ];
 if (process.env.FRONTEND_URL) corsOrigins.push(process.env.FRONTEND_URL);
 
