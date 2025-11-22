@@ -1,3 +1,8 @@
+/**
+ * @file index.js
+ * @brief Main backend server for hotel access control and monitoring.
+ */
+
 const express = require('express');
 const http = require('http');
 const aedes = require('aedes')();
@@ -11,12 +16,11 @@ require('dotenv').config();
 
 const app = express();
 
-// 🔧 FIX 1: Use PORT (not HTTP_PORT) for Render compatibility
+// HTTP / MQTT ports (PORT is provided by Render in production)
 const httpPort = process.env.PORT || 3000;
 const mqttPort = process.env.MQTT_PORT || 1883;
 
-
-// 🔧 FIX 2: Updated CORS with production domains
+// CORS: allowed origins for browser and SSE clients
 const corsOrigins = [
   'https://coastal-grand-tolr.vercel.app',
   'https://hotel-backend-5kcn.onrender.com'
@@ -24,7 +28,6 @@ const corsOrigins = [
 if (process.env.FRONTEND_URL) corsOrigins.push(process.env.FRONTEND_URL);
 
 if (process.env.NODE_ENV !== 'production') {
-  // In development, allow any origin (useful for LAN/iOS testing)
   app.use(cors({
     origin: true,
     credentials: true,
@@ -69,19 +72,18 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
-// Server-Sent Events endpoint for real-time updates
+/**
+ * SSE endpoint for per-hotel real-time updates.
+ */
 app.get('/api/events/:hotelId', (req, res) => {
   const hotelId = req.params.hotelId;
   
-  // Validate hotel ID
+  // Validate hotel ID format (positive integer)
   if (!hotelId || !/^[1-9][0-9]*$/.test(hotelId)) {
     return res.status(400).json({ error: 'Invalid hotel ID' });
   }
   
-  // Set SSE headers with better error handling
   try {
-    // In development, allow any origin for easier testing.
-    // In production, restrict SSE to the same origins as API CORS.
     let allowedOrigin = '*';
     if (process.env.NODE_ENV === 'production' && corsOrigins.length > 0) {
       const requestOrigin = req.headers.origin;
@@ -171,7 +173,9 @@ app.get('/api/events/:hotelId', (req, res) => {
   }
 });
 
-// 🔧 FIX 3: Add missing validateHotelId middleware
+/**
+ * Validate :hotelId route parameter.
+ */
 const validateHotelId = (req, res, next) => {
   const hotelId = req.params.hotelId;
   if (!hotelId || !/^[1-9][0-9]*$/.test(hotelId)) {
@@ -180,7 +184,9 @@ const validateHotelId = (req, res, next) => {
   next();
 };
 
-// Database connection check middleware
+/**
+ * Ensure MongoDB connection is ready before handling API requests.
+ */
 const checkDatabaseConnection = (req, res, next) => {
   if (mongoose.connection.readyState !== 1) {
     return res.status(503).json({ error: 'Database not connected' });
@@ -212,7 +218,9 @@ app.use([
 // Apply middleware to all API routes
 app.use('/api', checkDatabaseConnection);
 
-// MongoDB Connection (your exact code)
+/**
+ * Connect to MongoDB using the MONGO_URL environment variable.
+ */
 const mongoUrl = process.env.MONGO_URL;
 if (!mongoUrl) {
   console.error('MONGO_URL environment variable is not set. Please configure it in your environment or .env file.');
@@ -283,7 +291,9 @@ async function getSettingsForHotel(hotelId) {
   }
 }
 
-// Initialize Hotel Data (your exact function)
+/**
+ * Seed default hotel metadata into the database.
+ */
 async function initializeHotels() {
   const hotels = [
     {
@@ -446,7 +456,9 @@ async function initializeHotels() {
   console.log("Hotels initialized");
 }
 
-// Initialize Room Data for all hotels (your exact function)
+/**
+ * Initialize room documents for all hotels with default vacant state.
+ */
 async function initializeRooms() {
   const hotels = await Hotel.find();
   
@@ -506,7 +518,11 @@ async function initializeRooms() {
   console.log("Rooms initialized for all hotels");
 }
 
-// Get room count for each hotel (your exact function)
+/**
+ * Get configured room count for a given hotel id.
+ * @param {string} hotelId
+ * @returns {number}
+ */
 function getRoomCountForHotel(hotelId) {
   const roomCounts = {
     "1": 25, // Ooty
@@ -527,16 +543,14 @@ mongoose.connection.once('open', async () => {
 });
 
 
-// 🔧 FIX 4: Create HTTP server BEFORE using it
 const server = http.createServer(app);
 
-// 🔧 FIX 5: MQTT over WebSocket setup (for ESP32)
 const mqttWsServer = new WebSocket.Server({
   server,
   path: '/mqtt' // WebSocket endpoint at /mqtt for ESP32
 });
 
-// 🔧 Frontend WebSocket server for real-time updates
+// Frontend WebSocket server for real-time updates
 const frontendWsServer = new WebSocket.Server({
   server,
   path: '/ws',
@@ -616,14 +630,17 @@ frontendWsServer.on('connection', function(ws, req) {
   });
 });
 
-// Add error handling for WebSocket server
 frontendWsServer.on('error', (error) => {
   console.error('Frontend WebSocket Server error:', error);
 });
 
-console.log('🔧 Frontend WebSocket server initialized on /ws endpoint');
+console.log('Frontend WebSocket server initialized on /ws endpoint');
 
-// 🔧 FIX 6: Updated broadcastToClients function for frontend clients (WebSocket + SSE)
+/**
+ * Broadcast an event to all connected WebSocket and SSE clients.
+ * @param {string} event - Event name (e.g. "roomUpdate:1").
+ * @param {*} data - Payload to send to clients.
+ */
 function broadcastToClients(event, data) {
   const message = JSON.stringify({ event, data });
   console.log(`Broadcasting to ${frontendClients.size} WebSocket clients and ${global.sseClients ? global.sseClients.size : 0} SSE clients:`, { event, data });
@@ -699,7 +716,6 @@ mqttWsServer.on('connection', function(ws, req) {
   }
 });
 
-// 🔧 FIX 7: Conditional MQTT TCP server (only for local development)
 if (process.env.NODE_ENV !== 'production') {
   const tcpServer = net.createServer(aedes.handle);
   tcpServer.listen(mqttPort, () => {
@@ -709,7 +725,9 @@ if (process.env.NODE_ENV !== 'production') {
   console.log('🚫 TCP MQTT server disabled in production (Render limitation)');
 }
 
-// Handle MQTT publishes from ESP32 (your exact code)
+/**
+ * Handle MQTT messages from ESP32 devices (attendance, power, alerts).
+ */
 aedes.on('publish', async (packet, client) => {
   if (packet.topic.startsWith('campus/room/')) {
     try {
@@ -903,7 +921,9 @@ aedes.on('publish', async (packet, client) => {
   }
 });
 
-// HTTP API Endpoints for Frontend (your exact routes)
+/**
+ * HTTP API endpoints used by the frontend dashboards.
+ */
 app.get('/api/hotel/:hotelId', validateHotelId, async (req, res) => {
   try {
     const hotel = await Hotel.findOne({ id: req.params.hotelId });
@@ -1472,14 +1492,14 @@ app.post('/api/simulate-mqtt', async (req, res) => {
   }
 });
 
-// Health check route (your exact route)
+// Health check route for external uptime checks
 app.get('/health', (req, res) => res.json({ 
   status: 'ok',
   mqtt_websocket: 'enabled',
   tcp_mqtt: process.env.NODE_ENV !== 'production' ? 'enabled' : 'disabled'
 }));
 
-// 🔧 FIX 8: Graceful shutdown
+// Graceful shutdown for Render / production environments
 process.on('SIGTERM', () => {
   console.log('🛑 SIGTERM received, shutting down gracefully...');
   server.close(() => {
