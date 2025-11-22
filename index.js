@@ -22,7 +22,7 @@ const mqttPort = process.env.MQTT_PORT || 1883;
 
 // CORS: allowed origins for browser and SSE clients
 const corsOrigins = [
-  'https://coastal-grand-tolr.vercel.app',
+  'https://hotel-frontend-two-puce.vercel.app',
   'https://hotel-backend-5kcn.onrender.com'
 ];
 if (process.env.FRONTEND_URL) corsOrigins.push(process.env.FRONTEND_URL);
